@@ -13,7 +13,9 @@ const {
   updateSocket,
   setSocket,
   getSockets,
+  getSocketWithUser,
 } = require("./socket");
+const Chat = require("../models/Chat");
 
 /**
  * Get port from environment and store in Express.
@@ -38,16 +40,34 @@ io.on("connection", (socket) => {
 
   // Listen for incoming messages
   socket.on("message", (message) => {
-    console.log(getSockets());
     switch (message.type) {
       case "start":
         setSocket({ socket, user: null });
         break;
       case "login":
         updateSocket(socket, { socket, user: message.user });
+        (async () => {
+          try {
+            const chats = await Chat.find({
+              $or: [
+                { "from._id": message.user._id },
+                { "to._id": message.user._id },
+              ],
+            });
+            socket.emit("chat", chats);
+          } catch (error) {}
+        })();
         break;
       case "logout":
         updateSocket(socket, { socket, user: null });
+        break;
+      case "chat":
+        const chat = new Chat(message.data);
+        chat.save();
+        getSocketWithUser(message.data.to)?.socket.emit(
+          "new-chat",
+          message.data
+        );
         break;
       default:
         break;
